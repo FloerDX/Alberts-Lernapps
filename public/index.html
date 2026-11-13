@@ -3,20 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lernapps</title>
-<meta name="theme-color" content="#2f5d50">
+<title>Alberts Lernapps</title>
+<meta name="theme-color" content="#6f573d">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header>
-  <h1>📚 Lernapps</h1>
+  <a class="brand" href="./"><img src="albert-head.png" alt="" width="46" height="46"><span><b>Alberts Lernapps</b><small>Albert-Schweitzer-Schule Frankenthal</small></span></a>
   <input id="q" type="search" placeholder="Suchen: Titel, Fach, Thema …" autocomplete="off" aria-label="Suche">
   <button id="btnUpload" class="primary">＋ Hochladen</button>
 </header>
 
+<div class="herowrap"><section class="hero">
+  <div class="hero-text"><h2>Hallo! Ich bin Albert.</h2><p>Hier findest du Lernapps für jedes Fach und jede Klasse. Wähle ein Fach, suche ein Thema oder teile eine App mit deiner Klasse.</p></div>
+  <img src="albert-head.png" alt="Albert Schweitzer, freundlich lächelnd">
+</section></div>
 <main>
   <section class="filters" aria-label="Filter">
     <div><span class="lbl">Fach</span><span id="subjects" class="chips"></span></div>
