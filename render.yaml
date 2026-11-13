@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: lernapps
+    runtime: node
+    plan: starter            # Persistent Disk gibt es nur in bezahlten Plänen
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DATA_DIR
+        value: /var/data
+      - key: TEACHER_CODE
+        sync: false          # wird beim Einrichten abgefragt
+      - key: ADMIN_CODE
+        sync: false
+    disk:
+      name: lernapps-data
+      mountPath: /var/data
+      sizeGB: 1

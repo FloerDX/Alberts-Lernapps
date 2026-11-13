@@ -24,6 +24,12 @@ TEACHER_CODE=meincode ADMIN_CODE=geheim npm start   # http://localhost:3000
 Einzelne `.html`-Datei oder `.zip` (mit `index.html` im Hauptordner; ein umschließender Ordner wird automatisch entfernt).
 Erlaubt sind übliche Web-Dateitypen (html, css, js, Bilder, Audio/Video, Fonts, json …); anderes (z. B. `.php`) wird übersprungen.
 
+## Deployment auf Render
+1. Render → **New → Blueprint** → dieses GitHub-Repo wählen (nutzt `render.yaml`). `TEACHER_CODE` und `ADMIN_CODE` eintragen.
+2. Der Dienst nutzt eine **Persistent Disk** (`/var/data`) für Uploads – die gibt es nur in bezahlten Plänen (Starter). Im Free-Plan gehen Uploads bei jedem Neustart verloren.
+3. Unter *Settings → Custom Domains* `lernapps.eure-schule.de` eintragen und den angezeigten DNS-Eintrag (CNAME) bei der Domain anlegen.
+4. In WordPress einen Menüpunkt mit diesem Link anlegen.
+
 ## In die Schul-Website einbinden
 - **Subdomain** (empfohlen): z. B. `lernapps.schule.de` per DNS auf den Server zeigen lassen.
 - **Unterpfad**: Reverse-Proxy (nginx/Apache) von `schule.de/lernapps/` an den Server, dazu `BASE_PATH=/lernapps`.
