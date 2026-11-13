@@ -1,0 +1,25 @@
+{
+  "name": "alberts-lernapps",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FloerDX/Alberts-Lernapps.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/FloerDX/Alberts-Lernapps/issues"
+  },
+  "homepage": "https://github.com/FloerDX/Alberts-Lernapps#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "qrcode": "^1.5.4"
+  }
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lernapps</title>
+<meta name="theme-color" content="#2f5d50">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>📚 Lernapps</h1>
+  <input id="q" type="search" placeholder="Suchen: Titel, Fach, Thema …" autocomplete="off" aria-label="Suche">
+  <button id="btnUpload" class="primary">＋ Hochladen</button>
+</header>
+
+<main>
+  <section class="filters" aria-label="Filter">
+    <div><span class="lbl">Fach</span><span id="subjects" class="chips"></span></div>
+    <div><span class="lbl">Klasse</span><span id="grades" class="chips"></span></div>
+    <div class="bar"><span id="count"></span><button id="btnShareView" class="link">🔗 Ansicht teilen</button><button id="btnReset" class="link">Zurücksetzen</button></div>
+  </section>
+  <section id="list" class="grid"></section>
+  <p id="empty" hidden>Keine Apps gefunden.</p>
+</main>
+
+<dialog id="dlgUpload">
+  <form id="formUpload" method="dialog">
+    <h2>App hochladen</h2>
+    <label>HTML-Datei<input name="file" type="file" accept=".html,.htm,text/html" required></label>
+    <label>Titel<input name="title" maxlength="80" required></label>
+    <div class="row">
+      <label>Fach<input name="subject" list="dlSubjects" maxlength="40" required></label>
+      <label>Klasse<input name="grade" list="dlGrades" maxlength="20" placeholder="z. B. 5 oder 5–6" required></label>
+    </div>
+    <datalist id="dlSubjects"></datalist><datalist id="dlGrades"></datalist>
+    <label>Beschreibung<textarea name="description" rows="3" maxlength="400"></textarea></label>
+    <label>Tags (kommagetrennt)<input name="tags" placeholder="Bruchrechnen, Übung"></label>
+    <label>Dein Name<input name="author" maxlength="60"></label>
+    <label>Kollegiums-Code<input name="code" type="password" required autocomplete="off"></label>
+    <p id="uploadErr" class="err" hidden></p>
+    <div class="actions"><button type="button" class="cancel">Abbrechen</button><button class="primary" id="btnSend">Hochladen</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgShare">
+  <h2 id="shareTitle"></h2>
+  <img id="qr" alt="QR-Code" width="220" height="220">
+  <input id="shareUrl" readonly>
+  <div class="actions"><button id="btnCopy">Link kopieren</button><button id="btnNative" class="primary">Teilen …</button><button class="cancel">Schließen</button></div>
+</dialog>
+
+<dialog id="dlgEdit">
+  <form id="formEdit" method="dialog">
+    <h2>App bearbeiten</h2>
+    <label>Titel<input name="title" maxlength="80" required></label>
+    <div class="row">
+      <label>Fach<input name="subject" list="dlSubjects" required></label>
+      <label>Klasse<input name="grade" list="dlGrades" required></label>
+    </div>
+    <label>Beschreibung<textarea name="description" rows="3" maxlength="400"></textarea></label>
+    <label>Tags<input name="tags"></label>
+    <div class="actions"><button type="button" id="btnDelete" class="danger">Löschen</button><button type="button" class="cancel">Abbrechen</button><button class="primary">Speichern</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>
