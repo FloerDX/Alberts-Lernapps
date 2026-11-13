@@ -3,6 +3,7 @@
 const express = require('express');
 const multer = require('multer');
 const QRCode = require('qrcode');
+const AdmZip = require('adm-zip');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -12,7 +13,10 @@ const DATA = process.env.DATA_DIR || path.join(__dirname, 'data');
 const TEACHER_CODE = process.env.TEACHER_CODE || 'kollegium';   // zum Hochladen
 const ADMIN_CODE = process.env.ADMIN_CODE || 'admin';           // darf alles löschen/ändern
 const APPS_ORIGIN = (process.env.APPS_ORIGIN || '').replace(/\/$/, ''); // optional: eigene Subdomain für Apps
-const MAX_MB = Number(process.env.MAX_MB || 5);
+const MAX_MB = Number(process.env.MAX_MB || 20);                 // max. Upload (HTML oder ZIP)
+const MAX_UNZIPPED_MB = Number(process.env.MAX_UNZIPPED_MB || 50); // max. entpackte Gesamtgröße
+const BASE_PATH = ('/' + (process.env.BASE_PATH || '').replace(/^\/+|\/+$/g, '')).replace(/^\/$/, ''); // z. B. /lernapps
+const ALLOWED_EXT = new Set('html htm css js mjs json txt csv xml png jpg jpeg gif webp svg ico avif mp3 wav ogg m4a mp4 webm woff woff2 ttf otf wasm md'.split(' '));
 
 const DB_FILE = path.join(DATA, 'apps.json');
 const APP_DIR = path.join(DATA, 'apps');
@@ -35,8 +39,9 @@ const safeEq = (a, b) => {
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 
 // ---------- App ----------
-const app = express();
-app.disable('x-powered-by');
+const root = express();
+root.disable('x-powered-by');
+const app = express.Router();
 app.use(express.json({ limit: '50kb' }));
 
 const upload = multer({
@@ -66,22 +71,57 @@ app.get('/api/apps', (req, res) => res.json(apps.map(pub)));
 
 app.post('/api/check', requireTeacher, (req, res) => res.json({ ok: true, admin: safeEq(req.get('x-code'), ADMIN_CODE) }));
 
+// ZIP sicher entpacken: nur erlaubte Dateitypen, kein Path-Traversal, Größen-/Anzahllimits.
+function extractZip(buf, dir) {
+  let zip, entries;
+  try { zip = new AdmZip(buf); entries = zip.getEntries(); } catch { throw new Error('ZIP-Datei ist beschädigt.'); }
+  let files = entries.filter(e => !e.isDirectory).map(e => ({ e, name: e.entryName.replace(/\\/g, '/').replace(/^\/+/, '') }))
+    .filter(f => !/(^|\/)(__MACOSX|\.[^/]*)(\/|$)/.test(f.name)); // macOS-Müll & versteckte Dateien
+  if (!files.length) throw new Error('ZIP ist leer.');
+  if (files.length > 500) throw new Error('Zu viele Dateien (max. 500).');
+  // Gemeinsamen Top-Level-Ordner entfernen (typisch beim Zippen eines Ordners)
+  const tops = new Set(files.map(f => f.name.split('/')[0]));
+  if (tops.size === 1 && files.every(f => f.name.includes('/'))) files.forEach(f => { f.name = f.name.split('/').slice(1).join('/'); });
+  if (!files.some(f => f.name === 'index.html')) throw new Error('Im ZIP fehlt eine index.html (im Hauptordner).');
+  const total = files.reduce((n, f) => n + f.e.header.size, 0);
+  if (total > MAX_UNZIPPED_MB * 1024 * 1024) throw new Error(`Entpackt zu groß (max. ${MAX_UNZIPPED_MB} MB).`);
+  let written = 0, skipped = [];
+  const base = path.resolve(dir);
+  for (const f of files) {
+    const ext = path.extname(f.name).slice(1).toLowerCase();
+    const target = path.resolve(base, f.name);
+    if (!target.startsWith(base + path.sep)) throw new Error('Ungültiger Pfad im ZIP.');
+    if (!ALLOWED_EXT.has(ext)) { skipped.push(f.name); continue; }
+    const data = f.e.getData();
+    if (data.length > MAX_UNZIPPED_MB * 1024 * 1024) throw new Error('Datei im ZIP zu groß.');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, data); written++;
+  }
+  return { written, skipped };
+}
+
 app.post('/api/apps', requireTeacher, upload.single('file'), (req, res) => {
   const m = meta(req.body);
   if (!m.title || !m.subject || !m.grade) return res.status(400).json({ error: 'Titel, Fach und Klasse sind Pflicht.' });
-  if (!req.file) return res.status(400).json({ error: 'Bitte eine HTML-Datei auswählen.' });
-  if (!/\.html?$/i.test(req.file.originalname)) return res.status(400).json({ error: 'Nur .html-Dateien erlaubt.' });
-  const head = req.file.buffer.subarray(0, 2048).toString('utf8').toLowerCase();
-  if (!head.includes('<')) return res.status(400).json({ error: 'Das sieht nicht nach HTML aus.' });
+  if (!req.file) return res.status(400).json({ error: 'Bitte eine HTML- oder ZIP-Datei auswählen.' });
+  const isZip = /\.zip$/i.test(req.file.originalname);
+  if (!isZip && !/\.html?$/i.test(req.file.originalname)) return res.status(400).json({ error: 'Nur .html oder .zip erlaubt.' });
+  if (!isZip && !req.file.buffer.subarray(0, 2048).toString('utf8').includes('<')) return res.status(400).json({ error: 'Das sieht nicht nach HTML aus.' });
+  if (isZip && req.file.buffer.subarray(0, 4).toString('hex') !== '504b0304') return res.status(400).json({ error: 'Das ist keine gültige ZIP-Datei.' });
 
   const id = crypto.randomBytes(5).toString('hex');
   const ownerToken = crypto.randomBytes(16).toString('hex');
-  fs.mkdirSync(path.join(APP_DIR, id));
-  fs.writeFileSync(path.join(APP_DIR, id, 'index.html'), req.file.buffer);
+  const dir = path.join(APP_DIR, id);
+  fs.mkdirSync(dir);
+  let skipped = [];
+  try {
+    if (isZip) skipped = extractZip(req.file.buffer, dir).skipped;
+    else fs.writeFileSync(path.join(dir, 'index.html'), req.file.buffer);
+  } catch (e) { fs.rmSync(dir, { recursive: true, force: true }); return res.status(400).json({ error: e.message }); }
   const entry = { id, ...m, created: new Date().toISOString(), ownerToken };
   apps.unshift(entry);
   save();
-  res.status(201).json({ ...pub(entry), ownerToken }); // Token nur dem Uploader zeigen
+  res.status(201).json({ ...pub(entry), ownerToken, skipped }); // Token nur dem Uploader zeigen
 });
 
 function findOwned(req, res) {
@@ -115,16 +155,18 @@ app.get('/api/qr', async (req, res) => {
 });
 
 // Hochgeladene Apps: strikt gesandboxt (kein Zugriff auf den Organizer, keine Cookies/Storage des Hosts).
-app.get('/a/:id', (req, res) => {
+app.use('/a/:id', (req, res, next) => {
   const a = apps.find(x => x.id === req.params.id);
   if (!a) return res.status(404).send('App nicht gefunden.');
+  const [p, q] = req.originalUrl.split('?'); // relative Pfade brauchen den Schrägstrich
+  if (p.endsWith(a.id)) return res.redirect(301, p + '/' + (q ? '?' + q : ''));
   res.set({
     'Content-Security-Policy': "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads allow-pointer-lock",
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     'Cache-Control': 'no-cache',
   });
-  res.type('html').sendFile(path.join(APP_DIR, a.id, 'index.html'));
+  express.static(path.join(APP_DIR, a.id), { dotfiles: 'deny' })(req, res, next);
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -133,5 +175,8 @@ app.use((err, req, res, next) => {
   console.error(err); res.status(500).json({ error: 'Serverfehler.' });
 });
 
-if (require.main === module) app.listen(PORT, () => console.log(`Lernapps läuft auf http://localhost:${PORT}`));
-module.exports = app;
+if (BASE_PATH) root.use((req, res, next) => (req.originalUrl.split('?')[0] === BASE_PATH ? res.redirect(BASE_PATH + '/') : next()));
+root.use(BASE_PATH || '/', app);
+
+if (require.main === module) root.listen(PORT, () => console.log(`Lernapps läuft auf http://localhost:${PORT}${BASE_PATH}/`));
+module.exports = root;

@@ -30,7 +30,8 @@
 <dialog id="dlgUpload">
   <form id="formUpload" method="dialog">
     <h2>App hochladen</h2>
-    <label>HTML-Datei<input name="file" type="file" accept=".html,.htm,text/html" required></label>
+    <label>HTML-Datei oder ZIP<input name="file" type="file" accept=".html,.htm,.zip,text/html,application/zip" required></label>
+    <p class="hint">Einzelne HTML-Datei, oder ein ZIP mit <code>index.html</code> plus Bildern, Skripten usw.</p>
     <label>Titel<input name="title" maxlength="80" required></label>
     <div class="row">
       <label>Fach<input name="subject" list="dlSubjects" maxlength="40" required></label>

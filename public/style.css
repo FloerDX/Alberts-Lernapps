@@ -42,6 +42,7 @@ dialog label input,dialog label textarea{margin-top:.2rem;color:var(--ink)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
 .actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
 #qr{display:block;margin:0 auto 1rem;background:#fff;border-radius:10px}
+.hint{margin:.2rem 0;font-size:.8rem;color:var(--mute)}
 .err{color:var(--danger)}
 #toast{position:fixed;bottom:1rem;left:50%;transform:translate(-50%,200%);opacity:0;pointer-events:none;background:var(--ink);color:var(--bg);padding:.6rem 1rem;border-radius:10px;transition:.25s;z-index:20}
 #toast.show{transform:translate(-50%,0);opacity:1}

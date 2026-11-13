@@ -4,6 +4,7 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+const BASE = location.pathname.replace(/[^/]*$/, ''); // funktioniert auch unter /lernapps/
 let apps = [], cfg = { appsOrigin: '' };
 const state = { q: '', subject: '', grade: '' };
 let tokens = store.get('tokens', {});      // id -> ownerToken (nur Ersteller:in)
@@ -13,9 +14,9 @@ let adminCode = store.get('adminCode', ''); // gesetzt, wenn Admin-Code verwende
 const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss');
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const toast = t => { const el = $('#toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2500); };
-const appUrl = a => (cfg.appsOrigin || location.origin) + '/a/' + a.id;
+const appUrl = a => (cfg.appsOrigin ? cfg.appsOrigin + '/a/' : location.origin + BASE + 'a/') + a.id + '/';
 async function api(path, opts = {}) {
-  const r = await fetch(path, opts);
+  const r = await fetch(BASE + path.replace(/^\//, ''), opts);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Fehler ' + r.status);
   return j;
@@ -84,7 +85,7 @@ function render() {
       <div class="meta"><span class="tag s">${esc(a.subject)}</span><span class="tag">Kl. ${esc(a.grade)}</span>${(a.tags || []).map(t => `<span class="tag">${hl(t)}</span>`).join('')}</div>
       <p>${hl(a.description || '')}</p>
       ${a.author ? `<span class="by">von ${esc(a.author)}</span>` : ''}
-      <div class="actions"><a href="/a/${a.id}" target="_blank" rel="noopener">Öffnen</a>
+      <div class="actions"><a href="${esc(appUrl(a))}" target="_blank" rel="noopener">Öffnen</a>
         <button data-act="share" aria-label="Teilen">🔗</button>${mine ? '<button data-act="edit" aria-label="Bearbeiten">✏️</button>' : ''}</div>
     </article>`;
   }).join('');
@@ -106,7 +107,7 @@ let sharing = null;
 function openShare(title, url) {
   sharing = { title, url };
   $('#shareTitle').textContent = title; $('#shareUrl').value = url;
-  $('#qr').src = '/api/qr?text=' + encodeURIComponent(url);
+  $('#qr').src = BASE + 'api/qr?text=' + encodeURIComponent(url);
   $('#btnNative').hidden = !navigator.share;
   $('#dlgShare').showModal();
 }
@@ -140,8 +141,8 @@ $('#formUpload').addEventListener('submit', async e => {
     tokens[a.id] = a.ownerToken; store.set('tokens', tokens); store.set('code', code);
     const c = await api('/api/check', { method: 'POST', headers: { 'x-code': code } });
     if (c.admin) { adminCode = code; store.set('adminCode', code); }
-    delete a.ownerToken; apps.unshift(a);
-    f.reset(); $('#dlgUpload').close(); render(); toast('Hochgeladen ✔');
+    delete a.ownerToken; const sk = a.skipped; delete a.skipped; apps.unshift(a); const skipped = sk;
+    f.reset(); $('#dlgUpload').close(); render(); toast(skipped?.length ? `Hochgeladen – ${skipped.length} Datei(en) mit nicht erlaubtem Typ übersprungen` : 'Hochgeladen ✔');
   } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   btn.disabled = false;
 });

@@ -14,9 +14,21 @@ TEACHER_CODE=meincode ADMIN_CODE=geheim npm start   # http://localhost:3000
 | `ADMIN_CODE` | darf alle Apps bearbeiten/löschen | `admin` |
 | `DATA_DIR` | Speicherort (apps.json + Dateien) – **persistent halten/sichern** | `./data` |
 | `APPS_ORIGIN` | optional: eigene (Sub-)Domain nur für Apps, z. B. `https://apps.schule.de` | – |
-| `MAX_MB` | max. Upload-Größe | `5` |
+| `MAX_MB` | max. Upload-Größe (HTML oder ZIP) | `20` |
+| `MAX_UNZIPPED_MB` | max. entpackte Größe eines ZIPs | `50` |
+| `BASE_PATH` | optional: Betrieb unter einem Unterpfad der Schul-Website, z. B. `/lernapps` | – |
 
 **Standardcodes unbedingt ändern.**
+
+## Upload
+Einzelne `.html`-Datei oder `.zip` (mit `index.html` im Hauptordner; ein umschließender Ordner wird automatisch entfernt).
+Erlaubt sind übliche Web-Dateitypen (html, css, js, Bilder, Audio/Video, Fonts, json …); anderes (z. B. `.php`) wird übersprungen.
+
+## In die Schul-Website einbinden
+- **Subdomain** (empfohlen): z. B. `lernapps.schule.de` per DNS auf den Server zeigen lassen.
+- **Unterpfad**: Reverse-Proxy (nginx/Apache) von `schule.de/lernapps/` an den Server, dazu `BASE_PATH=/lernapps`.
+- **Einbetten**: per `<iframe>` oder als Link/Button auf der bestehenden Seite.
+Der Server braucht Node.js 18+; auf reinem PHP-/Shared-Hosting läuft er nicht.
 
 ## Sicherheit
 Hochgeladene Apps laufen per CSP-`sandbox` ohne Zugriff auf den Organizer. Folge: `localStorage`/Cookies
