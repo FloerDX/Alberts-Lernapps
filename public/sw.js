@@ -1,5 +1,5 @@
 // Network-first für API & Apps, Cache-Fallback für die Oberfläche (offline nutzbar).
-const C='lernapps-v2',SHELL=['./','style.css','app.js','icon-192.png','albert-head.png','manifest.webmanifest'];
+const C='lernapps-v3',SHELL=['./','style.css','app.js','icon-192.png','albert-head.png','logo.png','manifest.webmanifest'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener('fetch',e=>{
