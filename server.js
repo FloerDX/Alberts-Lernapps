@@ -1,9 +1,10 @@
-// Lernapps-Organizer: kleiner Server (Express) ohne Datenbank.
-// Metadaten: data/apps.json, Dateien: data/apps/<id>/index.html
+// Lernapps-Organizer: kleiner Server (Express).
+// Speicher: lokale Dateien (DATA_DIR) oder Postgres/Supabase (DATABASE_URL) – siehe storage.js
 const express = require('express');
 const multer = require('multer');
 const QRCode = require('qrcode');
 const AdmZip = require('adm-zip');
+const { fileStore, pgStore } = require('./storage');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -18,18 +19,8 @@ const MAX_UNZIPPED_MB = Number(process.env.MAX_UNZIPPED_MB || 50); // max. entpa
 const BASE_PATH = ('/' + (process.env.BASE_PATH || '').replace(/^\/+|\/+$/g, '')).replace(/^\/$/, ''); // z. B. /lernapps
 const ALLOWED_EXT = new Set('html htm css js mjs json txt csv xml png jpg jpeg gif webp svg ico avif mp3 wav ogg m4a mp4 webm woff woff2 ttf otf wasm md'.split(' '));
 
-const DB_FILE = path.join(DATA, 'apps.json');
-const APP_DIR = path.join(DATA, 'apps');
-fs.mkdirSync(APP_DIR, { recursive: true });
-
-// ---------- Mini-Speicher ----------
-let apps = [];
-try { apps = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch { apps = []; }
-const save = () => {
-  const tmp = DB_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(apps, null, 2));
-  fs.renameSync(tmp, DB_FILE);
-};
+const store = process.env.DATABASE_URL ? pgStore(process.env.DATABASE_URL) : fileStore(DATA);
+let apps = []; // Metadaten im Speicher (klein), Dateien liegen im Store
 const pub = ({ ownerToken, ...a }) => a; // Token nie ausliefern
 
 const safeEq = (a, b) => {
@@ -71,8 +62,8 @@ app.get('/api/apps', (req, res) => res.json(apps.map(pub)));
 
 app.post('/api/check', requireTeacher, (req, res) => res.json({ ok: true, admin: safeEq(req.get('x-code'), ADMIN_CODE) }));
 
-// ZIP sicher entpacken: nur erlaubte Dateitypen, kein Path-Traversal, Größen-/Anzahllimits.
-function extractZip(buf, dir) {
+// ZIP sicher entpacken (im Speicher): nur erlaubte Dateitypen, kein Path-Traversal, Größen-/Anzahllimits.
+function extractZip(buf) {
   let zip, entries;
   try { zip = new AdmZip(buf); entries = zip.getEntries(); } catch { throw new Error('ZIP-Datei ist beschädigt.'); }
   let files = entries.filter(e => !e.isDirectory).map(e => ({ e, name: e.entryName.replace(/\\/g, '/').replace(/^\/+/, '') }))
@@ -83,45 +74,43 @@ function extractZip(buf, dir) {
   const tops = new Set(files.map(f => f.name.split('/')[0]));
   if (tops.size === 1 && files.every(f => f.name.includes('/'))) files.forEach(f => { f.name = f.name.split('/').slice(1).join('/'); });
   if (!files.some(f => f.name === 'index.html')) throw new Error('Im ZIP fehlt eine index.html (im Hauptordner).');
-  const total = files.reduce((n, f) => n + f.e.header.size, 0);
-  if (total > MAX_UNZIPPED_MB * 1024 * 1024) throw new Error(`Entpackt zu groß (max. ${MAX_UNZIPPED_MB} MB).`);
-  let written = 0, skipped = [];
-  const base = path.resolve(dir);
+  const limit = MAX_UNZIPPED_MB * 1024 * 1024;
+  if (files.reduce((n, f) => n + f.e.header.size, 0) > limit) throw new Error(`Entpackt zu groß (max. ${MAX_UNZIPPED_MB} MB).`);
+  const out = [], skipped = []; let total = 0;
   for (const f of files) {
     const ext = path.extname(f.name).slice(1).toLowerCase();
-    const target = path.resolve(base, f.name);
-    if (!target.startsWith(base + path.sep)) throw new Error('Ungültiger Pfad im ZIP.');
+    if (f.name.split('/').some(p => p === '..' || p === '')) throw new Error('Ungültiger Pfad im ZIP.');
     if (!ALLOWED_EXT.has(ext)) { skipped.push(f.name); continue; }
     const data = f.e.getData();
-    if (data.length > MAX_UNZIPPED_MB * 1024 * 1024) throw new Error('Datei im ZIP zu groß.');
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, data); written++;
+    if ((total += data.length) > limit) throw new Error(`Entpackt zu groß (max. ${MAX_UNZIPPED_MB} MB).`);
+    out.push({ name: f.name, data });
   }
-  return { written, skipped };
+  return { files: out, skipped };
 }
 
-app.post('/api/apps', requireTeacher, upload.single('file'), (req, res) => {
-  const m = meta(req.body);
-  if (!m.title || !m.subject || !m.grade) return res.status(400).json({ error: 'Titel, Fach und Klasse sind Pflicht.' });
-  if (!req.file) return res.status(400).json({ error: 'Bitte eine HTML- oder ZIP-Datei auswählen.' });
-  const isZip = /\.zip$/i.test(req.file.originalname);
-  if (!isZip && !/\.html?$/i.test(req.file.originalname)) return res.status(400).json({ error: 'Nur .html oder .zip erlaubt.' });
-  if (!isZip && !req.file.buffer.subarray(0, 2048).toString('utf8').includes('<')) return res.status(400).json({ error: 'Das sieht nicht nach HTML aus.' });
-  if (isZip && req.file.buffer.subarray(0, 4).toString('hex') !== '504b0304') return res.status(400).json({ error: 'Das ist keine gültige ZIP-Datei.' });
-
-  const id = crypto.randomBytes(5).toString('hex');
-  const ownerToken = crypto.randomBytes(16).toString('hex');
-  const dir = path.join(APP_DIR, id);
-  fs.mkdirSync(dir);
-  let skipped = [];
+app.post('/api/apps', requireTeacher, upload.single('file'), async (req, res, next) => {
   try {
-    if (isZip) skipped = extractZip(req.file.buffer, dir).skipped;
-    else fs.writeFileSync(path.join(dir, 'index.html'), req.file.buffer);
-  } catch (e) { fs.rmSync(dir, { recursive: true, force: true }); return res.status(400).json({ error: e.message }); }
-  const entry = { id, ...m, created: new Date().toISOString(), ownerToken };
-  apps.unshift(entry);
-  save();
-  res.status(201).json({ ...pub(entry), ownerToken, skipped }); // Token nur dem Uploader zeigen
+    const m = meta(req.body);
+    if (!m.title || !m.subject || !m.grade) return res.status(400).json({ error: 'Titel, Fach und Klasse sind Pflicht.' });
+    if (!req.file) return res.status(400).json({ error: 'Bitte eine HTML- oder ZIP-Datei auswählen.' });
+    const isZip = /\.zip$/i.test(req.file.originalname);
+    if (!isZip && !/\.html?$/i.test(req.file.originalname)) return res.status(400).json({ error: 'Nur .html oder .zip erlaubt.' });
+    if (!isZip && !req.file.buffer.subarray(0, 2048).toString('utf8').includes('<')) return res.status(400).json({ error: 'Das sieht nicht nach HTML aus.' });
+    if (isZip && req.file.buffer.subarray(0, 4).toString('hex') !== '504b0304') return res.status(400).json({ error: 'Das ist keine gültige ZIP-Datei.' });
+
+    let files, skipped = [];
+    try {
+      if (isZip) ({ files, skipped } = extractZip(req.file.buffer));
+      else files = [{ name: 'index.html', data: req.file.buffer }];
+    } catch (e) { return res.status(400).json({ error: e.message }); }
+
+    const id = crypto.randomBytes(5).toString('hex');
+    const ownerToken = crypto.randomBytes(16).toString('hex');
+    const entry = { id, ...m, created: new Date().toISOString(), ownerToken };
+    await store.create(entry, files);
+    apps.unshift(entry);
+    res.status(201).json({ ...pub(entry), ownerToken, skipped }); // Token nur dem Uploader zeigen
+  } catch (e) { next(e); }
 });
 
 function findOwned(req, res) {
@@ -133,18 +122,21 @@ function findOwned(req, res) {
   return a;
 }
 
-app.put('/api/apps/:id', (req, res) => {
-  const a = findOwned(req, res); if (!a) return;
-  const m = meta({ ...a, ...req.body, tags: req.body.tags ?? a.tags.join(',') });
-  if (!m.title || !m.subject || !m.grade) return res.status(400).json({ error: 'Titel, Fach und Klasse sind Pflicht.' });
-  Object.assign(a, m); save(); res.json(pub(a));
+app.put('/api/apps/:id', async (req, res, next) => {
+  try {
+    const a = findOwned(req, res); if (!a) return;
+    const m = meta({ ...a, ...req.body, tags: req.body.tags ?? a.tags.join(',') });
+    if (!m.title || !m.subject || !m.grade) return res.status(400).json({ error: 'Titel, Fach und Klasse sind Pflicht.' });
+    const next_ = { ...a, ...m }; await store.update(next_); Object.assign(a, m); res.json(pub(a));
+  } catch (e) { next(e); }
 });
 
-app.delete('/api/apps/:id', (req, res) => {
-  const a = findOwned(req, res); if (!a) return;
-  apps = apps.filter(x => x !== a); save();
-  fs.rmSync(path.join(APP_DIR, a.id), { recursive: true, force: true });
-  res.json({ ok: true });
+app.delete('/api/apps/:id', async (req, res, next) => {
+  try {
+    const a = findOwned(req, res); if (!a) return;
+    await store.remove(a.id); apps = apps.filter(x => x !== a);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 // QR-Code als SVG
@@ -166,7 +158,16 @@ app.use('/a/:id', (req, res, next) => {
     'Referrer-Policy': 'no-referrer',
     'Cache-Control': 'no-cache',
   });
-  express.static(path.join(APP_DIR, a.id), { dotfiles: 'deny' })(req, res, next);
+  next();
+}, async (req, res, next) => {
+  try {
+    let rel; try { rel = decodeURIComponent(req.path.replace(/^\/+/, '')); } catch { return res.status(400).end(); }
+    if (!rel || rel.endsWith('/')) rel += 'index.html';
+    if (rel.split('/').some(p => p === '..' || p.startsWith('.'))) return res.status(404).send('Nicht gefunden.');
+    const buf = await store.file(req.params.id, rel);
+    if (!buf) return res.status(404).send('Nicht gefunden.');
+    res.type(path.extname(rel) || 'html').send(buf);
+  } catch (e) { next(e); }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -178,5 +179,10 @@ app.use((err, req, res, next) => {
 if (BASE_PATH) root.use((req, res, next) => (req.originalUrl.split('?')[0] === BASE_PATH ? res.redirect(BASE_PATH + '/') : next()));
 root.use(BASE_PATH || '/', app);
 
-if (require.main === module) root.listen(PORT, () => console.log(`Lernapps läuft auf http://localhost:${PORT}${BASE_PATH}/`));
+const ready = store.load().then(a => { apps = a; });
+if (require.main === module) {
+  ready.then(() => root.listen(PORT, () => console.log(`Lernapps läuft auf http://localhost:${PORT}${BASE_PATH}/ – Speicher: ${store.kind}`)))
+    .catch(e => { console.error('Start fehlgeschlagen:', e.message); process.exit(1); });
+}
 module.exports = root;
+module.exports.ready = ready;
