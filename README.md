@@ -1,13 +1,37 @@
 # Lernapps
 
 Organizer für HTML-Lernapps: nach Fach und Klasse filtern, durchsuchen, per Link/QR teilen.
-Kollegium kann Apps hochladen. Installierbar als PWA (Homescreen), kein Store/Sideloading nötig.
+Kollegium kann Apps (HTML oder ZIP) hochladen. Installierbar als PWA (Homescreen), kein Store/Sideloading nötig.
 
-## Starten
+Es gibt zwei Betriebsarten mit derselben Oberfläche:
+
+| | **PHP (Strato-Webhosting)** – empfohlen | Node-Server (Render/Supabase o. ä.) |
+|---|---|---|
+| Wo | direkt im Webspace der Schul-Website | externer Dienst |
+| Kosten | im Hosting enthalten | Free-/Bezahlplan nötig |
+| Datenbank | **keine nötig** (Metadaten als Datei) | Supabase/Postgres oder Dateien |
+
+## A) Strato / PHP
+
+Voraussetzung: PHP ≥ 8.1 (bei euch 8.4), PHP-Erweiterung `zip`, `.htaccess` erlaubt (bei Strato üblich).
+
+1. Paket bauen: `./scripts/bundle-php.sh` → `dist/lernapps-strato.zip` (bzw. fertig vom Entwickler erhalten). Entpacken.
+2. Per FTP den Ordner `lernapps/` in den Webspace der Domain hochladen (**inklusive der versteckten Datei `.htaccess`**) → erreichbar unter `https://eure-schule.de/lernapps/`.
+3. Im Ordner `config.sample.php` zu `config.php` umbenennen und eigene Codes eintragen.
+4. `https://eure-schule.de/lernapps/check.php` öffnen: alles muss ✅ sein (Upload-Limit, ZIP, Schreibrechte, Rewrite, `data/` gesperrt). Danach **`check.php` löschen**.
+5. In WordPress einen Menüpunkt „Lernapps“ auf `/lernapps/` anlegen.
+
+**Upload-Limit:** Es steht auf `check.php` („Effektives Upload-Limit“). Es ist das Minimum aus `upload_max_filesize` und `post_max_size` von PHP und `max_mb` in `config.php`. Zu niedrig? In der Strato-Verwaltung bei den PHP-Einstellungen anheben oder den Support fragen.
+
+Backup: der Ordner `lernapps/data/` enthält alle Apps und `apps.php` (Metadaten) – regelmäßig per FTP sichern.
+
+## B) Node-Server
+
 ```
 npm install
 TEACHER_CODE=meincode ADMIN_CODE=geheim npm start   # http://localhost:3000
 ```
+
 | Variable | Bedeutung | Standard |
 |---|---|---|
 | `TEACHER_CODE` | Code zum Hochladen (ans Kollegium weitergeben) | `kollegium` |

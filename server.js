@@ -40,6 +40,17 @@ const upload = multer({
   limits: { fileSize: MAX_MB * 1024 * 1024, files: 1 },
 });
 
+// Kompatibilität: Die Oberfläche spricht api.php?r=<route> (wie die PHP-Variante) – hier auf die REST-Routen abgebildet.
+app.all('/api.php', (req, res, next) => {
+  const id = String(req.query.id || '');
+  const map = { config: ['GET', '/api/config'], apps: [req.method, '/api/apps'], check: ['POST', '/api/check'],
+    update: ['PUT', '/api/apps/' + id], delete: ['DELETE', '/api/apps/' + id] };
+  const m = map[req.query.r];
+  if (!m) return res.status(404).json({ error: 'Unbekannte Route.' });
+  req.method = m[0]; req.url = m[1];
+  app.handle(req, res, next);
+});
+
 function requireTeacher(req, res, next) {
   const code = req.get('x-code') || '';
   if (safeEq(code, TEACHER_CODE) || safeEq(code, ADMIN_CODE)) return next();

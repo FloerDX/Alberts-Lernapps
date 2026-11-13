@@ -15,8 +15,9 @@ const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const toast = t => { const el = $('#toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2500); };
 const appUrl = a => (cfg.appsOrigin ? cfg.appsOrigin + '/a/' : location.origin + BASE + 'a/') + a.id + '/';
-async function api(path, opts = {}) {
-  const r = await fetch(BASE + path.replace(/^\//, ''), opts);
+// Alle Aufrufe gehen an api.php?r=<route>[&id=…] (läuft bei Strato/PHP und – per Kompatibilitätsroute – im Node-Server).
+async function api(route, opts = {}, id = '') {
+  const r = await fetch(BASE + 'api.php?r=' + route + (id ? '&id=' + id : ''), opts);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Fehler ' + r.status);
   return j;
@@ -107,7 +108,10 @@ let sharing = null;
 function openShare(title, url) {
   sharing = { title, url };
   $('#shareTitle').textContent = title; $('#shareUrl').value = url;
-  $('#qr').src = BASE + 'api/qr?text=' + encodeURIComponent(url);
+  try {
+    const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+    $('#qr').src = 'data:image/svg+xml;utf8,' + encodeURIComponent(qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true }));
+  } catch { $('#qr').removeAttribute('src'); }
   $('#btnNative').hidden = !navigator.share;
   $('#dlgShare').showModal();
 }
@@ -137,9 +141,9 @@ $('#formUpload').addEventListener('submit', async e => {
   const fd = new FormData(f); const code = fd.get('code'); fd.delete('code');
   btn.disabled = true; err.hidden = true;
   try {
-    const a = await api('/api/apps', { method: 'POST', headers: { 'x-code': code }, body: fd });
+    const a = await api('apps', { method: 'POST', headers: { 'x-code': code }, body: fd });
     tokens[a.id] = a.ownerToken; store.set('tokens', tokens); store.set('code', code);
-    const c = await api('/api/check', { method: 'POST', headers: { 'x-code': code } });
+    const c = await api('check', { method: 'POST', headers: { 'x-code': code } });
     if (c.admin) { adminCode = code; store.set('adminCode', code); }
     delete a.ownerToken; const sk = a.skipped; delete a.skipped; apps.unshift(a); const skipped = sk;
     f.reset(); $('#dlgUpload').close(); render(); toast(skipped?.length ? `Hochgeladen – ${skipped.length} Datei(en) mit nicht erlaubtem Typ übersprungen` : 'Hochgeladen ✔');
@@ -159,15 +163,15 @@ function openEdit(a) {
 $('#formEdit').addEventListener('submit', async e => {
   e.preventDefault(); const f = e.target;
   try {
-    const u = await api('/api/apps/' + editing.id, { method: 'PUT', headers: { 'content-type': 'application/json', ...authHeaders(editing) },
-      body: JSON.stringify({ title: f.title.value, subject: f.subject.value, grade: f.grade.value, description: f.description.value, tags: f.tags.value }) });
+    const u = await api('update', { method: 'POST', headers: { 'content-type': 'application/json', ...authHeaders(editing) },
+      body: JSON.stringify({ title: f.title.value, subject: f.subject.value, grade: f.grade.value, description: f.description.value, tags: f.tags.value }) }, editing.id);
     Object.assign(editing, u); $('#dlgEdit').close(); render(); toast('Gespeichert');
   } catch (ex) { toast(ex.message); }
 });
 $('#btnDelete').onclick = async () => {
   if (!confirm(`„${editing.title}" wirklich löschen?`)) return;
   try {
-    await api('/api/apps/' + editing.id, { method: 'DELETE', headers: authHeaders(editing) });
+    await api('delete', { method: 'POST', headers: authHeaders(editing) }, editing.id);
     apps = apps.filter(x => x !== editing); delete tokens[editing.id]; store.set('tokens', tokens);
     $('#dlgEdit').close(); render(); toast('Gelöscht');
   } catch (ex) { toast(ex.message); }
@@ -176,7 +180,7 @@ $('#btnDelete').onclick = async () => {
 // ---------- Start ----------
 (async () => {
   readUrl();
-  try { [cfg, apps] = await Promise.all([api('/api/config'), api('/api/apps')]); }
+  try { [cfg, apps] = await Promise.all([api('config'), api('apps')]); }
   catch { toast('Offline – zuletzt geladene Daten'); }
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
