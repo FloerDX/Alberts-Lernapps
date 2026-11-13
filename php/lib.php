@@ -34,33 +34,64 @@ function data_dir(): string {
     return $d;
 }
 
-// ---- Metadaten: JSON in einer PHP-Datei mit Exit-Zeile (auch ohne .htaccess nie auslesbar) ----
+// ---- Speicher: JSON in einer PHP-Datei mit Exit-Zeile (auch ohne .htaccess nie auslesbar) ----
 const GUARD = "<?php http_response_code(404); exit; ?>\n";
 
-function apps_read(): array {
-    $f = data_dir() . '/apps.php';
+function store_read(string $name): array {
+    $f = data_dir() . "/$name.php";
     if (!is_file($f)) return [];
-    $raw = (string)file_get_contents($f);
-    $j = json_decode(substr($raw, strlen(GUARD)), true);
+    $j = json_decode(substr((string)file_get_contents($f), strlen(GUARD)), true);
     return is_array($j) ? $j : [];
 }
 
 /** Liest, ändert (per Callback) und schreibt atomar unter Sperre. */
-function apps_update(callable $fn) {
+function store_update(string $name, callable $fn) {
     $dir = data_dir();
-    $lock = fopen("$dir/.lock", 'c');
+    $lock = fopen("$dir/.lock-$name", 'c');
     flock($lock, LOCK_EX);
     try {
-        $apps = apps_read();
-        $result = $fn($apps);
-        $tmp = "$dir/apps.php.tmp";
-        file_put_contents($tmp, GUARD . json_encode(array_values($apps), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
-        rename($tmp, "$dir/apps.php");
+        $data = store_read($name);
+        $result = $fn($data);
+        $tmp = "$dir/$name.php.tmp";
+        file_put_contents($tmp, GUARD . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+        rename($tmp, "$dir/$name.php");
         return $result;
     } finally {
         flock($lock, LOCK_UN);
         fclose($lock);
     }
+}
+
+function apps_read(): array { return array_values(store_read('apps')); }
+function apps_update(callable $fn) { return store_update('apps', function (array &$apps) use ($fn) { $r = $fn($apps); $apps = array_values($apps); return $r; }); }
+
+// ---- Fehlversuche bremsen: nach 5 falschen Codes sperrt die IP-Adresse 15 Minuten (auch mit richtigem Code) ----
+const RL_MAX_FAILS = 5, RL_WINDOW = 900, RL_LOCK = 900;
+
+function rl_key(): string { return hash('sha256', (string)($_SERVER['REMOTE_ADDR'] ?? '?')); }
+
+/** Restsekunden der Sperre, sonst 0. */
+function rl_locked(): int {
+    $e = store_read('ratelimit')[rl_key()] ?? null;
+    return ($e && ($e['until'] ?? 0) > time()) ? (int)$e['until'] - time() : 0;
+}
+
+function rl_fail(): void {
+    $k = rl_key();
+    store_update('ratelimit', function (array &$all) use ($k) {
+        $now = time();
+        foreach ($all as $key => $e) if (($e['last'] ?? 0) < $now - 86400) unset($all[$key]); // aufräumen
+        $e = $all[$k] ?? ['count' => 0, 'first' => $now, 'until' => 0];
+        if ($e['first'] < $now - RL_WINDOW) $e = ['count' => 0, 'first' => $now, 'until' => 0];
+        $e['count']++; $e['last'] = $now;
+        if ($e['count'] >= RL_MAX_FAILS) { $e['until'] = $now + RL_LOCK; $e['count'] = 0; $e['first'] = $now; }
+        $all[$k] = $e;
+    });
+}
+
+function rl_reset(): void {
+    $k = rl_key();
+    if (isset(store_read('ratelimit')[$k])) store_update('ratelimit', function (array &$all) use ($k) { unset($all[$k]); });
 }
 
 function rrmdir(string $d): void {

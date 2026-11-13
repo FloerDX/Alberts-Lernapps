@@ -25,13 +25,22 @@ function is_teacher(array $cfg): bool {
     $c = hdr('X-Code');
     return $c !== '' && (hash_equals($cfg['teacher_code'], $c) || hash_equals($cfg['admin_code'], $c));
 }
+function blocked_check(): void {
+    $s = rl_locked();
+    if ($s > 0) { header('Retry-After: ' . $s); fail('Zu viele Fehlversuche. Bitte in ' . (int)ceil($s / 60) . ' Minute(n) erneut versuchen.', 429); }
+}
+function bad_code(string $msg, int $status): never { rl_fail(); usleep(400000); fail($msg, $status); }
+
 function require_teacher(array $cfg): void {
-    if (!is_teacher($cfg)) { usleep(400000); fail('Falscher Kollegiums-Code.', 401); }
+    blocked_check();
+    if (!is_teacher($cfg)) bad_code('Falscher Kollegiums-Code.', 401);
+    rl_reset();
 }
 function authorize_app(array $cfg, array $app): void {
+    blocked_check();
     $isAdmin = hash_equals($cfg['admin_code'], hdr('X-Code'));
     $isOwner = hdr('X-Owner-Token') !== '' && hash_equals((string)($app['ownerToken'] ?? ''), hdr('X-Owner-Token'));
-    if (!$isAdmin && !$isOwner) { usleep(400000); fail('Nur Ersteller:in oder Admin darf das.', 403); }
+    if (!$isAdmin && !$isOwner) bad_code('Nur Ersteller:in oder Admin darf das.', 403);
 }
 function find_app(string $id): array {
     foreach (apps_read() as $a) if (($a['id'] ?? '') === $id) return $a;

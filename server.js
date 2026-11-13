@@ -51,9 +51,29 @@ app.all('/api.php', (req, res, next) => {
   app.handle(req, res, next);
 });
 
+// Fehlversuche bremsen: 5 falsche Codes in 15 Min -> 15 Min Sperre pro IP (im Speicher)
+const fails = new Map();
+function locked(req, res) {
+  const e = fails.get(req.ip);
+  if (e && e.until > Date.now()) {
+    res.status(429).json({ error: `Zu viele Fehlversuche. Bitte in ${Math.ceil((e.until - Date.now()) / 60000)} Minute(n) erneut versuchen.` });
+    return true;
+  }
+  return false;
+}
+function failed(req) {
+  const now = Date.now();
+  let e = fails.get(req.ip);
+  if (!e || e.first < now - 15 * 60000) e = { n: 0, first: now, until: 0 };
+  if (++e.n >= 5) e = { n: 0, first: now, until: now + 15 * 60000 };
+  fails.set(req.ip, e);
+}
+
 function requireTeacher(req, res, next) {
+  if (locked(req, res)) return;
   const code = req.get('x-code') || '';
-  if (safeEq(code, TEACHER_CODE) || safeEq(code, ADMIN_CODE)) return next();
+  if (safeEq(code, TEACHER_CODE) || safeEq(code, ADMIN_CODE)) { fails.delete(req.ip); return next(); }
+  failed(req);
   res.status(401).json({ error: 'Falscher Kollegiums-Code.' });
 }
 
@@ -125,11 +145,12 @@ app.post('/api/apps', requireTeacher, upload.single('file'), async (req, res, ne
 });
 
 function findOwned(req, res) {
+  if (locked(req, res)) return null;
   const a = apps.find(x => x.id === req.params.id);
   if (!a) { res.status(404).json({ error: 'Nicht gefunden.' }); return null; }
   const isAdmin = safeEq(req.get('x-code') || '', ADMIN_CODE);
   const isOwner = safeEq(req.get('x-owner-token') || '', a.ownerToken);
-  if (!isAdmin && !isOwner) { res.status(403).json({ error: 'Nur Ersteller:in oder Admin darf das.' }); return null; }
+  if (!isAdmin && !isOwner) { failed(req); res.status(403).json({ error: 'Nur Ersteller:in oder Admin darf das.' }); return null; }
   return a;
 }
 

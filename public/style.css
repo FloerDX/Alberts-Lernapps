@@ -75,3 +75,6 @@ dialog label input,dialog label textarea{margin-top:.2rem;color:var(--ink)}
 #qr{display:block;margin:0 auto 1rem;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px}
 #toast{position:fixed;bottom:1rem;left:50%;transform:translate(-50%,200%);opacity:0;pointer-events:none;background:var(--ink);color:var(--bg);padding:.6rem 1rem;border-radius:12px;transition:.25s;z-index:20}
 #toast.show{transform:translate(-50%,0);opacity:1}
+
+dialog label.check{display:flex;gap:.5rem;align-items:center;color:var(--ink)}
+dialog label.check input{width:auto;margin:0}

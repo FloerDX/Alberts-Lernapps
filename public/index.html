@@ -25,7 +25,7 @@
   <section class="filters" aria-label="Filter">
     <div><span class="lbl">Fach</span><span id="subjects" class="chips"></span></div>
     <div><span class="lbl">Klasse</span><span id="grades" class="chips"></span></div>
-    <div class="bar"><span id="count"></span><button id="btnShareView" class="link">🔗 Ansicht teilen</button><button id="btnReset" class="link">Zurücksetzen</button></div>
+    <div class="bar"><span id="count"></span><button id="btnShareView" class="link">🔗 Ansicht teilen</button><button id="btnReset" class="link">Zurücksetzen</button><button id="btnAdmin" class="link">🔑 Admin</button></div>
   </section>
   <section id="list" class="grid"></section>
   <p id="empty" hidden>Keine Apps gefunden.</p>
@@ -46,6 +46,7 @@
     <label>Tags (kommagetrennt)<input name="tags" placeholder="Bruchrechnen, Übung"></label>
     <label>Dein Name<input name="author" maxlength="60"></label>
     <label>Kollegiums-Code<input name="code" type="password" required autocomplete="off"></label>
+    <label class="check"><input type="checkbox" name="remember"> Code auf diesem Gerät merken <small>(nicht an geteilten Rechnern)</small></label>
     <p id="uploadErr" class="err" hidden></p>
     <div class="actions"><button type="button" class="cancel">Abbrechen</button><button class="primary" id="btnSend">Hochladen</button></div>
   </form>

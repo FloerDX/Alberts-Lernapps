@@ -3,12 +3,16 @@ const $ = s => document.querySelector(s);
 const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 const BASE = location.pathname.replace(/[^/]*$/, ''); // funktioniert auch unter /lernapps/
 let apps = [], cfg = { appsOrigin: '' };
 const state = { q: '', subject: '', grade: '' };
 let tokens = store.get('tokens', {});      // id -> ownerToken (nur Ersteller:in)
-let adminCode = store.get('adminCode', ''); // gesetzt, wenn Admin-Code verwendet wurde
+// Codes werden nur gemerkt, wenn man das ausdrücklich ankreuzt (sonst nur im Arbeitsspeicher dieser Seite).
+const remembered = store.get('remember', false);
+let adminCode = remembered ? store.get('adminCode', '') : '';
+if (!remembered) { store.del('code'); store.del('adminCode'); } // Altbestand aufräumen
 
 // ---------- Helfer ----------
 const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss');
@@ -134,22 +138,40 @@ $('#list').addEventListener('click', e => {
 });
 
 // Upload
-$('#btnUpload').onclick = () => { $('#formUpload').code.value = store.get('code', ''); $('#uploadErr').hidden = true; $('#dlgUpload').showModal(); };
+$('#btnUpload').onclick = () => {
+  const f = $('#formUpload'); f.code.value = store.get('remember', false) ? store.get('code', '') : ''; f.remember.checked = store.get('remember', false);
+  $('#uploadErr').hidden = true; $('#dlgUpload').showModal();
+};
 $('#formUpload').addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target, err = $('#uploadErr'), btn = $('#btnSend');
-  const fd = new FormData(f); const code = fd.get('code'); fd.delete('code');
+  const fd = new FormData(f); const code = fd.get('code'); const remember = fd.get('remember') === 'on'; fd.delete('code'); fd.delete('remember');
   btn.disabled = true; err.hidden = true;
   try {
     const a = await api('apps', { method: 'POST', headers: { 'x-code': code }, body: fd });
-    tokens[a.id] = a.ownerToken; store.set('tokens', tokens); store.set('code', code);
+    tokens[a.id] = a.ownerToken; store.set('tokens', tokens);
     const c = await api('check', { method: 'POST', headers: { 'x-code': code } });
-    if (c.admin) { adminCode = code; store.set('adminCode', code); }
+    if (c.admin) adminCode = code;
+    if (remember) { store.set('remember', true); store.set('code', code); if (c.admin) store.set('adminCode', code); }
+    else { store.del('remember'); store.del('code'); store.del('adminCode'); }
+    updateAdminBtn();
     delete a.ownerToken; const sk = a.skipped; delete a.skipped; apps.unshift(a); const skipped = sk;
     f.reset(); $('#dlgUpload').close(); render(); toast(skipped?.length ? `Hochgeladen – ${skipped.length} Datei(en) mit nicht erlaubtem Typ übersprungen` : 'Hochgeladen ✔');
   } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   btn.disabled = false;
 });
+
+// Admin-Modus (nur für diese Sitzung, nichts wird gespeichert)
+function updateAdminBtn() { $('#btnAdmin').textContent = adminCode ? '🔓 Admin beenden' : '🔑 Admin'; render(); }
+$('#btnAdmin').onclick = async () => {
+  if (adminCode) { adminCode = ''; store.del('adminCode'); updateAdminBtn(); return; }
+  const code = prompt('Admin-Code:'); if (!code) return;
+  try {
+    const c = await api('check', { method: 'POST', headers: { 'x-code': code } });
+    if (!c.admin) return toast('Das ist kein Admin-Code.');
+    adminCode = code; updateAdminBtn(); toast('Admin-Modus aktiv');
+  } catch (ex) { toast(ex.message); }
+};
 
 // Bearbeiten / Löschen
 let editing = null;
@@ -182,7 +204,7 @@ $('#btnDelete').onclick = async () => {
   readUrl();
   try { [cfg, apps] = await Promise.all([api('config'), api('apps')]); }
   catch { toast('Offline – zuletzt geladene Daten'); }
-  render();
+  updateAdminBtn();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
 })();
