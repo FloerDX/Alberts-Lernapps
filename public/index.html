@@ -69,6 +69,8 @@
     </div>
     <label>Beschreibung<textarea name="description" rows="3" maxlength="400"></textarea></label>
     <label>Tags<input name="tags"></label>
+    <label>Neue Version hochladen <small>(optional, ersetzt die App; der Link bleibt gleich)</small><input name="file" type="file" accept=".html,.htm,.zip,text/html,application/zip"></label>
+    <p id="editErr" class="err" hidden></p>
     <div class="actions"><button type="button" id="btnDelete" class="danger">Löschen</button><button type="button" class="cancel">Abbrechen</button><button class="primary">Speichern</button></div>
   </form>
 </dialog>

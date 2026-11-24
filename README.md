@@ -23,6 +23,8 @@ Voraussetzung: PHP ≥ 8.1 (bei euch 8.4), PHP-Erweiterung `zip`, `.htaccess` er
 
 **Upload-Limit:** Es steht auf `check.php` („Effektives Upload-Limit“). Es ist das Minimum aus `upload_max_filesize` und `post_max_size` von PHP und `max_mb` in `config.php`. Zu niedrig? In der Strato-Verwaltung bei den PHP-Einstellungen anheben oder den Support fragen.
 
+**Schnittstelle:** Apps lassen sich auch per Skript hochladen und aktualisieren (`scripts/lernapps-push.sh`, Beschreibung in [`API.md`](API.md)). In der Oberfläche gibt es beim Bearbeiten „Neue Version hochladen“.
+
 **Sicherheit im Betrieb**
 - Codes werden im Browser nur gemerkt, wenn man „Code auf diesem Gerät merken“ ankreuzt. Admin-Modus über „🔑 Admin“ gilt nur bis zum Neuladen.
 - Nach 5 falschen Codes sperrt die IP-Adresse 15 Minuten (auch mit richtigem Code). Hinter dem Schul-WLAN teilen sich alle dieselbe IP – eine Sperre trifft dann alle kurz.

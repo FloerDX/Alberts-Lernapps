@@ -179,16 +179,25 @@ const authHeaders = a => adminCode ? { 'x-code': adminCode } : { 'x-owner-token'
 function openEdit(a) {
   editing = a; const f = $('#formEdit');
   f.title.value = a.title; f.subject.value = a.subject; f.grade.value = a.grade;
-  f.description.value = a.description || ''; f.tags.value = (a.tags || []).join(', ');
+  f.description.value = a.description || ''; f.tags.value = (a.tags || []).join(', '); f.file.value = ''; $('#editErr').hidden = true;
   $('#dlgEdit').showModal();
 }
 $('#formEdit').addEventListener('submit', async e => {
-  e.preventDefault(); const f = e.target;
+  e.preventDefault(); const f = e.target, err = $('#editErr'); err.hidden = true;
   try {
-    const u = await api('update', { method: 'POST', headers: { 'content-type': 'application/json', ...authHeaders(editing) },
-      body: JSON.stringify({ title: f.title.value, subject: f.subject.value, grade: f.grade.value, description: f.description.value, tags: f.tags.value }) }, editing.id);
-    Object.assign(editing, u); $('#dlgEdit').close(); render(); toast('Gespeichert');
-  } catch (ex) { toast(ex.message); }
+    let u;
+    if (f.file.files.length) { // neue Version hochladen (ersetzt Dateien, Link bleibt)
+      const fd = new FormData();
+      for (const k of ['title', 'subject', 'grade', 'description', 'tags']) fd.append(k, f[k].value);
+      fd.append('file', f.file.files[0]);
+      u = await api('replace', { method: 'POST', headers: authHeaders(editing), body: fd }, editing.id);
+    } else {
+      u = await api('update', { method: 'POST', headers: { 'content-type': 'application/json', ...authHeaders(editing) },
+        body: JSON.stringify({ title: f.title.value, subject: f.subject.value, grade: f.grade.value, description: f.description.value, tags: f.tags.value }) }, editing.id);
+    }
+    delete u.skipped; delete u.fileReplaced;
+    Object.assign(editing, u); f.file.value = ''; $('#dlgEdit').close(); render(); toast('Gespeichert');
+  } catch (ex) { err.textContent = ex.message; err.hidden = false; }
 });
 $('#btnDelete').onclick = async () => {
   if (!confirm(`„${editing.title}" wirklich löschen?`)) return;
